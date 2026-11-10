@@ -1,0 +1,601 @@
+openapi: 3.0.3
+info:
+  title: College Marketplace API (proposed, not implemented)
+  version: 0.1.0
+  description: All monetary amounts are integer INR paise. Persist via REST, then notify via Socket.IO.
+servers:
+  - url: /api/v1
+security:
+  - cookieAuth: []
+tags:
+  - name: Auth
+  - name: Listings
+  - name: Conversations
+  - name: Offers
+  - name: Transactions
+  - name: Reports
+  - name: Admin
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Register unverified student
+      requestBody:
+        $ref: '#/components/requestBodies/Registration'
+      responses:
+        '201': { $ref: '#/components/responses/Item' }
+        '400': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /auth/login:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Log in and set session cookie
+      requestBody:
+        $ref: '#/components/requestBodies/Login'
+      responses:
+        '200': { $ref: '#/components/responses/Item' }
+        '401': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke current session
+      responses:
+        '204': { description: Logged out }
+        '401': { $ref: '#/components/responses/Error' }
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Current profile and verification status
+      responses:
+        '200': { $ref: '#/components/responses/Item' }
+        '401': { $ref: '#/components/responses/Error' }
+  /auth/verification:
+    post:
+      tags: [Auth]
+      summary: Submit college verification request using configured method
+      requestBody:
+        $ref: '#/components/requestBodies/Verification'
+      responses:
+        '202': { $ref: '#/components/responses/Item' }
+        '400': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /auth/verification/status:
+    get:
+      tags: [Auth]
+      summary: Get own verification status and safe next-step information
+      responses:
+        '200': { $ref: '#/components/responses/Item' }
+        '401': { $ref: '#/components/responses/Error' }
+  /auth/verification/confirm-email:
+    post:
+      tags: [Auth]
+      summary: Redeem short-lived single-use email verification token when email method configured
+      requestBody:
+        $ref: '#/components/requestBodies/EmailConfirmation'
+      responses:
+        '200': { $ref: '#/components/responses/Item' }
+        '400': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /auth/verification/sso/start:
+    get:
+      tags: [Auth]
+      summary: Begin configured institutional SSO redirect with CSRF state/nonce/PKCE
+      responses:
+        '302': { description: Redirect to approved identity provider }
+        '409': { $ref: '#/components/responses/Error' }
+  /auth/verification/sso/callback:
+    get:
+      tags: [Auth]
+      summary: Identity-provider callback validates state and eligible student claims; deployment-specific parameters TBD
+      responses:
+        '302': { description: Redirect to frontend with safe outcome }
+        '400': { $ref: '#/components/responses/Error' }
+  /listings:
+    get:
+      tags: [Listings]
+      summary: Search verified-student listings; filters and cursor pagination
+      parameters:
+        - { name: q, in: query, schema: { type: string, maxLength: 100 } }
+        - { name: category, in: query, schema: { type: string } }
+        - { name: condition, in: query, schema: { type: string, enum: [new, like_new, good, fair, poor] } }
+        - { name: minPricePaise, in: query, schema: { type: integer, minimum: 0 } }
+        - { name: maxPricePaise, in: query, schema: { type: integer, minimum: 0 } }
+        - { name: sort, in: query, schema: { type: string, enum: [newest, price_asc, price_desc] } }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { $ref: '#/components/responses/Page' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Listings]
+      summary: Create listing (verified student)
+      requestBody:
+        $ref: '#/components/requestBodies/Listing'
+      responses:
+        '201': { $ref: '#/components/responses/Item' }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /listings/{listingId}:
+    parameters:
+      - { $ref: '#/components/parameters/ListingId' }
+    get:
+      tags: [Listings]
+      summary: View listing (verified student)
+      responses:
+        '200': { $ref: '#/components/responses/Item' }
+        '404': { $ref: '#/components/responses/Error' }
+    patch:
+      tags: [Listings]
+      summary: Partially edit own listing or admin; no direct status or reservation edits
+      requestBody:
+        $ref: '#/components/requestBodies/ListingPatch'
+      responses:
+        '200': { $ref: '#/components/responses/Item' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [Listings]
+      summary: Soft-remove own available listing or admin; reserved listing requires resolution
+      responses:
+        '204': { description: Removed }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /listings/{listingId}/upload-intent:
+    parameters:
+      - { $ref: '#/components/parameters/ListingId' }
+    post:
+      tags: [Listings]
+      summary: Owner requests short-lived signed image upload parameters
+      requestBody:
+        $ref: '#/components/requestBodies/Upload'
+      responses:
+        '200': { $ref: '#/components/responses/Item' }
+        '403': { $ref: '#/components/responses/Error' }
+  /listings/{listingId}/images:
+    parameters:
+      - { $ref: '#/components/parameters/ListingId' }
+    post:
+      tags: [Listings]
+      summary: Owner finalizes previously signed uploaded image
+      requestBody:
+        $ref: '#/components/requestBodies/UploadFinalize'
+      responses:
+        '201': { $ref: '#/components/responses/Item' }
+        '400': { $ref: '#/components/responses/Error' }
+  /conversations:
+    get:
+      tags: [Conversations]
+      summary: List own conversations, paginated
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { $ref: '#/components/responses/Page' }
+    post:
+      tags: [Conversations]
+      summary: Buyer starts or retrieves unique conversation about listing
+      requestBody:
+        $ref: '#/components/requestBodies/Conversation'
+      responses:
+        '200': { $ref: '#/components/responses/Item' }
+        '201': { $ref: '#/components/responses/Item' }
+        '403': { $ref: '#/components/responses/Error' }
+  /conversations/{conversationId}/messages:
+    parameters:
+      - { $ref: '#/components/parameters/ConversationId' }
+    get:
+      tags: [Conversations]
+      summary: Paginate messages (participants only)
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { $ref: '#/components/responses/Page' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Conversations]
+      summary: Persist message then emit message.created
+      requestBody:
+        $ref: '#/components/requestBodies/Message'
+      responses:
+        '201': { $ref: '#/components/responses/Item' }
+        '403': { $ref: '#/components/responses/Error' }
+  /conversations/{conversationId}/offers:
+    parameters:
+      - { $ref: '#/components/parameters/ConversationId' }
+    get:
+      tags: [Offers]
+      summary: View immutable negotiation history (participants only)
+      responses:
+        '200': { $ref: '#/components/responses/Page' }
+    post:
+      tags: [Offers]
+      summary: Buyer initiates or recipient counters current pending offer; one pending per conversation
+      requestBody:
+        $ref: '#/components/requestBodies/Offer'
+      responses:
+        '201': { $ref: '#/components/responses/Item' }
+        '409': { $ref: '#/components/responses/Error' }
+  /offers/{offerId}/decision:
+    parameters:
+      - { $ref: '#/components/parameters/OfferId' }
+    post:
+      tags: [Offers]
+      summary: Pending-offer recipient accepts or rejects; accept atomically creates reservation (Stage 8)
+      requestBody:
+        $ref: '#/components/requestBodies/Decision'
+      responses:
+        '200': { $ref: '#/components/responses/Item' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /offers/{offerId}/withdraw:
+    parameters:
+      - { $ref: '#/components/parameters/OfferId' }
+    post:
+      tags: [Offers]
+      summary: Pending-offer proposer withdraws own offer; conditional pending to withdrawn
+      responses:
+        '200': { $ref: '#/components/responses/Item' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /transactions:
+    get:
+      tags: [Transactions]
+      summary: List own transactions
+      responses:
+        '200': { $ref: '#/components/responses/Page' }
+  /transactions/{transactionId}/confirm:
+    parameters:
+      - { $ref: '#/components/parameters/TransactionId' }
+    post:
+      tags: [Transactions]
+      summary: Buyer or seller confirms handover; both confirmations complete sale
+      responses:
+        '200': { $ref: '#/components/responses/Item' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /transactions/{transactionId}/cancel:
+    parameters:
+      - { $ref: '#/components/parameters/TransactionId' }
+    post:
+      tags: [Transactions]
+      summary: Party cancels reservation under approved cancellation policy
+      requestBody:
+        $ref: '#/components/requestBodies/Reason'
+      responses:
+        '200': { $ref: '#/components/responses/Item' }
+        '409': { $ref: '#/components/responses/Error' }
+  /transactions/{transactionId}/dispute:
+    parameters:
+      - { $ref: '#/components/parameters/TransactionId' }
+    post:
+      tags: [Transactions]
+      summary: Party opens handover dispute, retains listing reservation
+      requestBody:
+        $ref: '#/components/requestBodies/Reason'
+      responses:
+        '200': { $ref: '#/components/responses/Item' }
+        '409': { $ref: '#/components/responses/Error' }
+  /reports:
+    post:
+      tags: [Reports]
+      summary: Verified student reports listing or user
+      requestBody:
+        $ref: '#/components/requestBodies/Report'
+      responses:
+        '201': { $ref: '#/components/responses/Item' }
+        '400': { $ref: '#/components/responses/Error' }
+  /admin/verifications:
+    get:
+      tags: [Admin]
+      summary: Authorized verification reviewer lists pending manual requests (no evidence in list)
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [pending, rejected, verified] } }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { $ref: '#/components/responses/Page' }
+        '403': { $ref: '#/components/responses/Error' }
+  /admin/verifications/{userId}:
+    parameters:
+      - { $ref: '#/components/parameters/UserId' }
+    get:
+      tags: [Admin]
+      summary: Authorized reviewer inspects verification request and controlled private evidence reference
+      responses:
+        '200': { $ref: '#/components/responses/Item' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Admin]
+      summary: Approve or reject pending manual verification with atomic audit entry
+      requestBody:
+        $ref: '#/components/requestBodies/VerificationDecision'
+      responses:
+        '200': { $ref: '#/components/responses/Item' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /admin/verifications/{userId}/revoke:
+    parameters:
+      - { $ref: '#/components/parameters/UserId' }
+    post:
+      tags: [Admin]
+      summary: Authorized reviewer revokes verified status with atomic audit entry
+      requestBody:
+        $ref: '#/components/requestBodies/Reason'
+      responses:
+        '200': { $ref: '#/components/responses/Item' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /admin/audit-logs:
+    get:
+      tags: [Admin]
+      summary: Restricted audit reviewer reads paginated sanitized administrator action logs
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { $ref: '#/components/responses/Page' }
+        '403': { $ref: '#/components/responses/Error' }
+  /admin/reports:
+    get:
+      tags: [Admin]
+      summary: Admin-only report queue
+      responses:
+        '200': { $ref: '#/components/responses/Page' }
+        '403': { $ref: '#/components/responses/Error' }
+  /admin/reports/{reportId}:
+    parameters:
+      - { $ref: '#/components/parameters/ReportId' }
+    patch:
+      tags: [Admin]
+      summary: Admin updates report status and resolution
+      requestBody:
+        $ref: '#/components/requestBodies/Moderation'
+      responses:
+        '200': { $ref: '#/components/responses/Item' }
+        '403': { $ref: '#/components/responses/Error' }
+  /admin/users/{userId}/suspend:
+    parameters:
+      - { $ref: '#/components/parameters/UserId' }
+    post:
+      tags: [Admin]
+      summary: Admin suspends user with audit record
+      requestBody:
+        $ref: '#/components/requestBodies/Reason'
+      responses:
+        '200': { $ref: '#/components/responses/Item' }
+        '403': { $ref: '#/components/responses/Error' }
+components:
+  securitySchemes:
+    cookieAuth: { type: apiKey, in: cookie, name: campus_session }
+  parameters:
+    ListingId: { name: listingId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    ConversationId: { name: conversationId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    OfferId: { name: offerId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    TransactionId: { name: transactionId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    ReportId: { name: reportId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    UserId: { name: userId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    Cursor: { name: cursor, in: query, schema: { type: string } }
+    Limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+  schemas:
+    Id: { type: string, pattern: '^[0-9a-fA-F]{24}$' }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, requestId]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            requestId: { type: string }
+    Item:
+      type: object
+      required: [data]
+      properties:
+        data: { type: object, additionalProperties: true }
+    Page:
+      type: object
+      required: [data, page]
+      properties:
+        data: { type: array, items: { type: object, additionalProperties: true } }
+        page:
+          type: object
+          required: [nextCursor]
+          properties:
+            nextCursor: { type: string, nullable: true }
+  responses:
+    Item: { description: Success, content: { application/json: { schema: { $ref: '#/components/schemas/Item' } } } }
+    Page: { description: Paginated result, content: { application/json: { schema: { $ref: '#/components/schemas/Page' } } } }
+    Error: { description: Validation, authentication, authorization, missing resource, conflict, or rate limit error, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  requestBodies:
+    Registration:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [email, password, name, department, graduationYear]
+            properties:
+              email: { type: string, format: email }
+              password: { type: string, minLength: 12 }
+              name: { type: string, minLength: 1, maxLength: 100 }
+              department: { type: string, minLength: 1, maxLength: 80 }
+              graduationYear: { type: integer }
+    Login:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [email, password]
+            properties:
+              email: { type: string, format: email }
+              password: { type: string }
+    Verification:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [method]
+            properties:
+              method: { type: string, enum: [college_email, manual_review, sso] }
+              evidenceToken: { type: string, description: Private short-lived reference, not public URL }
+    EmailConfirmation:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [token]
+            properties:
+              token: { type: string, minLength: 1 }
+    VerificationDecision:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [decision, reason]
+            properties:
+              decision: { type: string, enum: [approve, reject] }
+              reason: { type: string, minLength: 3, maxLength: 1000 }
+    ListingPatch:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            minProperties: 1
+            properties:
+              title: { type: string, minLength: 3, maxLength: 120 }
+              description: { type: string, minLength: 5, maxLength: 5000 }
+              category: { type: string, minLength: 1, maxLength: 60 }
+              condition: { type: string, enum: [new, like_new, good, fair, poor] }
+              pricePaise: { type: integer, minimum: 1 }
+    Listing:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [title, description, category, condition, pricePaise]
+            properties:
+              title: { type: string, minLength: 3, maxLength: 120 }
+              description: { type: string, minLength: 5, maxLength: 5000 }
+              category: { type: string, maxLength: 60 }
+              condition: { type: string, enum: [new, like_new, good, fair, poor] }
+              pricePaise: { type: integer, minimum: 1 }
+    Conversation:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [listingId]
+            properties:
+              listingId: { $ref: '#/components/schemas/Id' }
+    Message:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [body]
+            properties:
+              body: { type: string, minLength: 1, maxLength: 2000 }
+    Offer:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [amountPaise]
+            properties:
+              amountPaise: { type: integer, minimum: 1 }
+              parentOfferId: { $ref: '#/components/schemas/Id', description: Required for counter; forbidden for initial buyer offer }
+    Decision:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [decision]
+            properties:
+              decision: { type: string, enum: [accept, reject] }
+    Reason:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [reason]
+            properties:
+              reason: { type: string, minLength: 3, maxLength: 1000 }
+    Report:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [targetType, targetId, reason]
+            properties:
+              targetType: { type: string, enum: [listing, user] }
+              targetId: { $ref: '#/components/schemas/Id' }
+              reason: { type: string, minLength: 3, maxLength: 200 }
+              details: { type: string, maxLength: 2000 }
+    Moderation:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [status]
+            properties:
+              status: { type: string, enum: [reviewing, resolved, dismissed] }
+              resolution: { type: string, maxLength: 1000 }
+    Upload:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [mimeType, sizeBytes]
+            properties:
+              mimeType: { type: string, enum: [image/jpeg, image/png, image/webp] }
+              sizeBytes: { type: integer, minimum: 1 }
+    UploadFinalize:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [publicId]
+            properties:
+              publicId: { type: string }
+x-socket-io:
+  sourceOfTruth: MongoDB; all business mutations are persisted through REST before emitting events.
+  negotiation: Buyer starts; current recipient may accept/reject/counter; proposer may withdraw; acceptance only enabled with Stage 8 atomic reservation transaction. Terminal offer states never reopen. Events are emitted only after commit.
+  verification: Only the selected institutional method is deployed; manual review admin routes require reviewer privilege and append-only audit logging.
+  errorPolicy: 401 unauthenticated, 403 unverified/unauthorized, 404 hidden or absent resource, 409 invalid lifecycle/concurrency or acceptance unavailable before Stage 8; mutation endpoints require CSRF protection for cookie auth.
+  handshake: Authenticated session cookie; reject suspended/unverified users.
+  clientEvents:
+    conversation.join:
+      payload: { conversationId: ObjectId string }
+      authorization: Must be a conversation participant; joins notification room only.
+  serverEvents:
+    message.created:
+      payload: { messageId: ObjectId string, conversationId: ObjectId string, senderId: ObjectId string, body: string, createdAt: ISO8601 string }
+    offer.created:
+      payload: { offerId: ObjectId string, conversationId: ObjectId string, amountPaise: integer, proposedBy: ObjectId string, status: pending }
+    offer.updated:
+      payload: { offerId: ObjectId string, conversationId: ObjectId string, status: accepted/rejected/countered/withdrawn/expired, transactionId: optional ObjectId string }
+  reconnect: Clients fetch missed history via paginated REST; event delivery is not guaranteed.
