@@ -30,3 +30,10 @@
 - Reservation starts only on accepted offer; listing price is not itself an automatic sale.
 - No third-party delivery or mandatory payment integration.
 - Seller can only accept buyer offer; buyer can accept seller counteroffer; each counter creates a new offer document.
+
+### Stage 2 implementation boundary
+The developer approved a configurable, unselected verification boundary. Accounts stay `unverified`; verification submission/confirmation is unavailable until an institution-approved method is selected. This is a deliberate deviation from the original Stage 2 done criterion requiring a functioning reviewer/verification flow. Password reset remains deferred until email infrastructure is approved. Cookie sessions use SameSite=Lax with explicit origin checking for mutations in local same-site deployment; review cross-site production topology before release.
+
+
+### Stage 2 email verification decision
+The project owner supplied an institutional address ending `@lnmiit.ac.in` and selected college email OTP. Domain remains configurable; production approval and proof of current enrollment remain unresolved. Local console output is permitted only when `NODE_ENV=development`; production uses a configured Resend delivery integration or refuses requests. SMTP adapter and password reset are deferred.

@@ -15,7 +15,10 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "mongoose": "^8.12.1"
+    "mongoose": "^8.12.1",
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.7",
+    "express-rate-limit": "^7.5.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.22.0",
@@ -29,6 +32,8 @@
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",
     "typescript-eslint": "^8.26.1",
-    "vitest": "^3.0.8"
+    "vitest": "^3.0.8",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cookie-parser": "^1.4.8"
   }
 }

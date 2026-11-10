@@ -48,3 +48,15 @@ The backend waits for MongoDB connectivity before opening its HTTP port. A missi
 From the root: `npm run test`, `npm run typecheck`, `npm run lint`, `npm run build`. The API can be checked manually with `curl http://localhost:4000/api/health`. A valid response is `{"status":"success","message":"College Marketplace API is running"}`. Backend tests use Supertest and do not need a database; startup does.
 
 **Environment limitation of the delivered scaffold:** package installation and executable validation could not be completed in the authoring environment because npm registry DNS was unavailable and required packages were not cached. Install dependencies and run the commands above before declaring Stage 1 fully verified.
+
+## Stage 2 authentication (configuration pending)
+
+The new `/register`, `/login`, `/verify`, and `/profile` pages use cookie-based API sessions.
+Install dependencies from the repository root with `npm install` and configure `FRONTEND_ORIGIN` and `NEXT_PUBLIC_API_URL` to match the browser origins. API session cookies are HttpOnly, SameSite=Lax and Secure in production; cross-site production deployment requires a separate reviewed CSRF/cookie policy. Do not use wildcard CORS origins.
+
+**Verification is deliberately disabled** until an institution-approved method and enrollment-eligibility rules are selected. New users remain `unverified`; no email OTPs, SSO, manual reviewer decisions, or password-reset emails are sent. Do not treat registration or login as proof of enrollment. The `/api/auth/verification` endpoint returns HTTP 503; status can be read at `/api/auth/verification/status`. No admin credentials are seeded.
+
+## Stage 2: local college email OTP
+Set `COLLEGE_EMAIL_DOMAIN=lnmiit.ac.in`, `NODE_ENV=development`, and `EMAIL_DELIVERY_MODE=console` in `apps/api/.env`. Restart the API, register a college address, log in, visit `/verify`, request a code, and read the **backend terminal** (never the browser response) for the development-only OTP. Enter the code within 10 minutes; there are five attempts and a 60-second resend cooldown. Never deploy with console mode.
+
+For real delivery use `EMAIL_DELIVERY_MODE=resend`, `RESEND_API_KEY` and a verified `EMAIL_FROM` sender. If unconfigured, delivery fails closed (503). SMTP is a future adapter option, not implemented. Email ownership does not guarantee current enrollment. Production requires an institutional eligibility policy, secure HTTPS deployment and proper secret handling.

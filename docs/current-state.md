@@ -26,3 +26,12 @@ Verification eligibility/method, reviewer authority, evidence retention, hosting
 
 ## Acceptance status
 **Stage 1 scaffold implemented, but Stage 1 is not yet fully verified or ready to declare complete.** Run the commands documented in README in an environment with npm access and MongoDB, review the real repository diff, and resolve any discovered errors. Stop here; do not start Stage 2 without explicit approval.
+
+## Stage 2 implementation candidate (not fully accepted)
+Registration, login, opaque cookie sessions, logout, self-profile read/update and unconfigured verification boundary are implemented in the provided scaffold. Institution verification remains disabled, so no users are automatically verified. Full Stage 2 acceptance is blocked on institution verification choice, email/SSO/manual infrastructure, and end-to-end validation. Password reset is deferred pending approved email infrastructure. No Stage 3 work has begun.
+
+Stage 2 uses bcrypt password hashes, opaque HttpOnly cookies, and database-backed sessions. API prefix is `/api/auth` (the OpenAPI server prefix has been aligned to `/api`). Unselected verification adapter intentionally returns 503; no OTP is generated or delivered. Runtime tests and full build verification must be executed on the developer machine with dependencies and MongoDB available.
+
+
+## Stage 2 college email OTP addition
+Added hashed six-digit OTP challenges, 10-minute expiry, five-attempt cap, 60-second resend cooldown, single-use claim, development-only console delivery and a Resend HTTPS adapter. Registration restricts to configurable `COLLEGE_EMAIL_DOMAIN` (currently `lnmiit.ac.in`). No SMTP adapter or password reset until configured. The user must verify institutional approval and enrollment eligibility separately. No tests/builds are claimed as passing in this environment.

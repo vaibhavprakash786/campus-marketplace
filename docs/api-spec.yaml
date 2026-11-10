@@ -1,10 +1,10 @@
 openapi: 3.0.3
 info:
-  title: College Marketplace API (proposed, not implemented)
+  title: College Marketplace API (Stage 2 partial implementation; future routes proposed)
   version: 0.1.0
   description: All monetary amounts are integer INR paise. Persist via REST, then notify via Socket.IO.
 servers:
-  - url: /api/v1
+  - url: /api
 security:
   - cookieAuth: []
 tags:
@@ -43,9 +43,16 @@ paths:
       tags: [Auth]
       summary: Revoke current session
       responses:
-        '204': { description: Logged out }
+        '200': { description: Session revoked; JSON message returned }
         '401': { $ref: '#/components/responses/Error' }
   /auth/me:
+    patch:
+      tags: [Auth]
+      summary: Update own name, department or graduationYear only
+      responses:
+        '200': { $ref: '#/components/responses/Item' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
     get:
       tags: [Auth]
       summary: Current profile and verification status
@@ -599,3 +606,7 @@ x-socket-io:
     offer.updated:
       payload: { offerId: ObjectId string, conversationId: ObjectId string, status: accepted/rejected/countered/withdrawn/expired, transactionId: optional ObjectId string }
   reconnect: Clients fetch missed history via paginated REST; event delivery is not guaranteed.
+
+# Stage 2 implementation note: verification submission and email confirmation return 503
+# while no institution-approved verification method is selected. SSO and admin
+# verification routes are planned only, not implemented. Stage 3+ routes remain planned.

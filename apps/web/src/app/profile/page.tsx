@@ -1,0 +1,8 @@
+'use client';
+import { useEffect, useState } from 'react';
+type Profile = { name:string; email:string; department:string; graduationYear:number; verificationStatus:string; status:string };
+export default function Page(){const [user,setUser]=useState<Profile|null>(null); const [error,setError]=useState(''); const [loading,setLoading]=useState(true); const api=process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/,'');
+useEffect(()=>{if(!api){setError('API URL not configured');setLoading(false);return;} const controller=new AbortController(); fetch(`${api}/api/auth/me`,{credentials:'include',signal:controller.signal}).then(async r=>{if(!r.ok)throw new Error('Session expired or login required');return r.json();}).then(data=>setUser(data.user)).catch(e=>{if(!controller.signal.aborted)setError(e.message);}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});return()=>controller.abort();},[api]);
+async function logout(){try{await fetch(`${api}/api/auth/logout`,{method:'POST',credentials:'include'});window.location.assign('/login');}catch{setError('Logout failed');}}
+return <main className="p-10 max-w-xl mx-auto"><h1 className="text-2xl font-bold">Student profile</h1>{loading?<p>Loading…</p>:error?<p role="alert">{error}</p>:user?<section className="mt-5 space-y-2"><p>Name: {user.name}</p><p>Email: {user.email}</p><p>Department: {user.department}</p><p>Graduation year: {user.graduationYear}</p><p>Verification: {user.verificationStatus}</p><p>Account: {user.status}</p><button className="bg-indigo-600 text-white p-2 rounded" onClick={logout}>Log out</button></section>:null}</main>;
+}

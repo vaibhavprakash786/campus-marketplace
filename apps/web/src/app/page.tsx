@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 
 type ConnectionStatus = 'loading' | 'connected' | 'error' | 'unconfigured';
 
@@ -52,6 +53,7 @@ export default function Home() {
         <p className="mt-4 text-lg text-slate-600">A college-exclusive space to give second-hand essentials a new home.</p>
         <p className="mt-6 text-slate-700">Your campus marketplace is being prepared.</p>
         <p className="mt-8 text-sm text-slate-600" role="status" aria-live="polite">{messages[status]}</p>
+        <nav className="mt-5 flex gap-4 text-sm text-indigo-600"><Link href="/register">Register</Link><Link href="/login">Log in</Link><Link href="/profile">Profile</Link></nav>
       </section>
     </main>
   );
