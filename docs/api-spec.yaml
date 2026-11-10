@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: College Marketplace API (Stage 2 partial implementation; future routes proposed)
+  title: College Marketplace API (Stage 3 listings backend; future routes proposed)
   version: 0.1.0
   description: All monetary amounts are integer INR paise. Persist via REST, then notify via Socket.IO.
 servers:
@@ -103,52 +103,62 @@ paths:
   /listings:
     get:
       tags: [Listings]
-      summary: Search verified-student listings; filters and cursor pagination
+      summary: List available listings (verified students only), newest first
       parameters:
-        - { name: q, in: query, schema: { type: string, maxLength: 100 } }
-        - { name: category, in: query, schema: { type: string } }
-        - { name: condition, in: query, schema: { type: string, enum: [new, like_new, good, fair, poor] } }
-        - { name: minPricePaise, in: query, schema: { type: integer, minimum: 0 } }
-        - { name: maxPricePaise, in: query, schema: { type: integer, minimum: 0 } }
-        - { name: sort, in: query, schema: { type: string, enum: [newest, price_asc, price_desc] } }
-        - { $ref: '#/components/parameters/Cursor' }
-        - { $ref: '#/components/parameters/Limit' }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, maximum: 10000, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
       responses:
-        '200': { $ref: '#/components/responses/Page' }
+        '200': { $ref: '#/components/responses/ListingPage' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
     post:
       tags: [Listings]
-      summary: Create listing (verified student)
-      requestBody:
-        $ref: '#/components/requestBodies/Listing'
+      summary: Create available listing as verified student; sellerId derived from session
+      requestBody: { $ref: '#/components/requestBodies/Listing' }
       responses:
-        '201': { $ref: '#/components/responses/Item' }
+        '201': { $ref: '#/components/responses/ListingItem' }
         '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /listings/my-listings:
+    get:
+      tags: [Listings]
+      summary: List own listings, including archived, newest first (verified student)
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1, maximum: 10000, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        '200': { $ref: '#/components/responses/ListingPage' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
   /listings/{listingId}:
     parameters:
       - { $ref: '#/components/parameters/ListingId' }
     get:
       tags: [Listings]
-      summary: View listing (verified student)
+      summary: View an available listing (verified student)
       responses:
-        '200': { $ref: '#/components/responses/Item' }
+        '200': { $ref: '#/components/responses/ListingItem' }
+        '400': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
     patch:
       tags: [Listings]
-      summary: Partially edit own listing or admin; no direct status or reservation edits
-      requestBody:
-        $ref: '#/components/requestBodies/ListingPatch'
+      summary: Partially edit own available listing; protected fields rejected
+      requestBody: { $ref: '#/components/requestBodies/ListingPatch' }
       responses:
-        '200': { $ref: '#/components/responses/Item' }
-        '403': { $ref: '#/components/responses/Error' }
+        '200': { $ref: '#/components/responses/ListingItem' }
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
     delete:
       tags: [Listings]
-      summary: Soft-remove own available listing or admin; reserved listing requires resolution
+      summary: Soft-remove own available listing; historical record preserved
       responses:
-        '204': { description: Removed }
-        '403': { $ref: '#/components/responses/Error' }
+        '204': { description: Listing archived, no response body }
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
   /listings/{listingId}/upload-intent:
     parameters:
@@ -388,6 +398,28 @@ components:
     Cursor: { name: cursor, in: query, schema: { type: string } }
     Limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
   schemas:
+    ListingRecord:
+      type: object
+      required: [_id, sellerId, title, description, category, pricePaise, condition, location, status, imageAssets, createdAt, updatedAt]
+      properties:
+        _id: { $ref: '#/components/schemas/Id' }
+        sellerId: { $ref: '#/components/schemas/Id' }
+        title: { type: string }
+        description: { type: string }
+        category: { type: string }
+        pricePaise: { type: integer, minimum: 1 }
+        condition: { type: string, enum: [new, like_new, good, fair, poor] }
+        location: { type: string }
+        status: { type: string, enum: [available, reserved, sold, removed] }
+        imageAssets:
+          type: array
+          items:
+            type: object
+            properties:
+              publicId: { type: string }
+              url: { type: string, format: uri }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
     Id: { type: string, pattern: '^[0-9a-fA-F]{24}$' }
     Error:
       type: object
@@ -419,6 +451,32 @@ components:
     Item: { description: Success, content: { application/json: { schema: { $ref: '#/components/schemas/Item' } } } }
     Page: { description: Paginated result, content: { application/json: { schema: { $ref: '#/components/schemas/Page' } } } }
     Error: { description: Validation, authentication, authorization, missing resource, conflict, or rate limit error, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    ListingItem:
+      description: Listing response in {data} wrapper
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data: { $ref: '#/components/schemas/ListingRecord' }
+    ListingPage:
+      description: Paginated listing response with page, limit, total and hasMore
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, page]
+            properties:
+              data: { type: array, items: { $ref: '#/components/schemas/ListingRecord' } }
+              page:
+                type: object
+                required: [page, limit, total, hasMore]
+                properties:
+                  page: { type: integer }
+                  limit: { type: integer }
+                  total: { type: integer }
+                  hasMore: { type: boolean }
   requestBodies:
     Registration:
       required: true
@@ -488,19 +546,21 @@ components:
               category: { type: string, minLength: 1, maxLength: 60 }
               condition: { type: string, enum: [new, like_new, good, fair, poor] }
               pricePaise: { type: integer, minimum: 1 }
+              location: { type: string, minLength: 2, maxLength: 120 }
     Listing:
       required: true
       content:
         application/json:
           schema:
             type: object
-            required: [title, description, category, condition, pricePaise]
+            required: [title, description, category, condition, pricePaise, location]
             properties:
               title: { type: string, minLength: 3, maxLength: 120 }
               description: { type: string, minLength: 5, maxLength: 5000 }
               category: { type: string, maxLength: 60 }
               condition: { type: string, enum: [new, like_new, good, fair, poor] }
               pricePaise: { type: integer, minimum: 1 }
+              location: { type: string, minLength: 2, maxLength: 120 }
     Conversation:
       required: true
       content:

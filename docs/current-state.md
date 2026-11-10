@@ -35,3 +35,6 @@ Stage 2 uses bcrypt password hashes, opaque HttpOnly cookies, and database-backe
 
 ## Stage 2 college email OTP addition
 Added hashed six-digit OTP challenges, 10-minute expiry, five-attempt cap, 60-second resend cooldown, single-use claim, development-only console delivery and a Resend HTTPS adapter. Registration restricts to configurable `COLLEGE_EMAIL_DOMAIN` (currently `lnmiit.ac.in`). No SMTP adapter or password reset until configured. The user must verify institutional approval and enrollment eligibility separately. No tests/builds are claimed as passing in this environment.
+
+## Stage 3 — listing backend implementation candidate
+Added Mongoose Listing model, strict create/patch validation, verified-session-only listing routes, seller ownership checks, available-only public browse/detail, owner listing history, bounded page/limit pagination, soft archive and indexes. Stage 3 does not implement uploads, category filters, search, chat, reservations or frontend marketplace. API spec and database documentation updated. Source ZIP omitted `.git`, so repository status/diff cannot be inspected in this environment. Runtime test/check results are recorded in the Stage 3 handoff; developer must run full validation with installed dependencies and MongoDB before approving.
