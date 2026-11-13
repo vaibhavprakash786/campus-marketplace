@@ -10,5 +10,9 @@ const userSchema = new Schema({
  status: { type: String, enum: ['active','suspended'], default: 'active' },
  verificationMethod: { type: String, enum: ['college_email','manual_review','sso'] },
  verifiedAt: Date,
+ profilePicture: {
+  url: { type: String, default: null },
+  publicId: { type: String, default: null },
+ },
 }, { timestamps: true });
 export const User = mongoose.model('User', userSchema);

@@ -1,4 +1,7 @@
 import { randomInt, timingSafeEqual } from 'node:crypto';
+import multer from 'multer';
+import { v2 as cloudinary } from 'cloudinary';
+import { fileTypeFromBuffer } from 'file-type';
 import { EmailVerification } from '../models/email-verification.model.js';
 import { deliverOtp, deliveryReady } from '../utils/email-delivery.js';
 import { Router, type Request, type Response, type NextFunction } from 'express';
@@ -11,6 +14,7 @@ const wrap = (fn: (req: Request, res: Response) => Promise<void>) => (req: Reque
 const collegeDomain = () => (process.env.COLLEGE_EMAIL_DOMAIN ?? '').trim().toLowerCase();
 const isCollegeEmail = (email: string) => Boolean(collegeDomain()) && email.endsWith(`@${collegeDomain()}`);
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 } });
 const publicUser = (u: {
     _id: unknown;
     email: string;
@@ -20,6 +24,7 @@ const publicUser = (u: {
     role: string;
     verificationStatus: string;
     status: string;
+    profilePicture?: { url?: string | null; publicId?: string | null } | null;
 }) => ({
     id: String(u._id),
     email: u.email,
@@ -28,7 +33,8 @@ const publicUser = (u: {
     graduationYear: u.graduationYear,
     role: u.role,
     verificationStatus: u.verificationStatus,
-    status: u.status
+    status: u.status,
+    profilePicture: u.profilePicture?.url ? { url: u.profilePicture.url, publicId: u.profilePicture.publicId ?? '' } : null
 });
 const cookieOptions = { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' as const, path: '/' };
 const validPassword = (p: unknown): p is string => typeof p === 'string' && p.length >= 12 && p.length <= 128 && /[A-Z]/.test(p) && /[a-z]/.test(p) && /[0-9]/.test(p) && /[^A-Za-z0-9]/.test(p);
@@ -72,6 +78,81 @@ router.patch('/me', requireAuth, wrap(async (req, res) => {
     const user = await User.findByIdAndUpdate(req.principal!.id, { $set: updates }, { new: true, runValidators: true });
     if (!user) { res.status(404).json({ error: 'Account not found' }); return; }
     res.json({ user: publicUser(user) });
+}));
+router.post('/profile-picture', requireAuth, (req, res, next) => {
+    upload.single('image')(req, res, (error: unknown) => {
+        if (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Invalid image upload' }); return; }
+        next();
+    });
+}, wrap(async (req, res) => {
+    const file = req.file;
+    if (!file || !file.size) { res.status(400).json({ error: 'Select an image file' }); return; }
+    if (file.size > 5 * 1024 * 1024) { res.status(400).json({ error: 'Image must be 5 MB or less' }); return; }
+    const allowed = new Set(['image/jpeg', 'image/png', 'image/webp']);
+    if (!allowed.has(file.mimetype)) { res.status(400).json({ error: 'Only JPEG, PNG, or WebP images are allowed' }); return; }
+    const detected = await fileTypeFromBuffer(file.buffer);
+    if (!detected || !allowed.has(detected.mime)) { res.status(400).json({ error: 'Image content does not match a supported format' }); return; }
+
+    const { CLOUDINARY_CLOUD_NAME: cloud_name, CLOUDINARY_API_KEY: api_key, CLOUDINARY_API_SECRET: api_secret } = process.env;
+    if (!cloud_name || !api_key || !api_secret) {
+        res.status(503).json({ error: 'Cloudinary is not configured. Set CLOUDINARY credentials on API server.' });
+        return;
+    }
+    cloudinary.config({ cloud_name, api_key, api_secret, secure: true });
+
+    const user = await User.findById(req.principal!.id);
+    if (!user) { res.status(404).json({ error: 'Account not found' }); return; }
+
+    const oldPublicId = (user as unknown as { profilePicture?: { publicId?: string } }).profilePicture?.publicId;
+
+    const uploaded = await new Promise<{ public_id: string; secure_url: string }>((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+            {
+                folder: `college-marketplace/profiles/${req.principal!.id}`,
+                resource_type: 'image',
+                transformation: [{ width: 400, height: 400, crop: 'fill', gravity: 'face' }]
+            },
+            (error, result) => {
+                if (error || !result) { reject(error ?? new Error('Cloudinary upload failed')); return; }
+                resolve(result);
+            }
+        );
+        stream.end(file.buffer);
+    });
+
+    if (oldPublicId) {
+        try {
+            await cloudinary.uploader.destroy(oldPublicId, { resource_type: 'image' });
+        } catch (e) {
+            console.error('Failed to clean up old Cloudinary profile image:', e);
+        }
+    }
+
+    const updated = await User.findByIdAndUpdate(req.principal!.id, {
+        $set: { profilePicture: { url: uploaded.secure_url, publicId: uploaded.public_id } }
+    }, { new: true });
+
+    res.json({ user: publicUser(updated || user), message: 'Profile picture updated successfully' });
+}));
+router.delete('/profile-picture', requireAuth, wrap(async (req, res) => {
+    const user = await User.findById(req.principal!.id);
+    if (!user) { res.status(404).json({ error: 'Account not found' }); return; }
+    const oldPublicId = (user as unknown as { profilePicture?: { publicId?: string } }).profilePicture?.publicId;
+    if (oldPublicId) {
+        const { CLOUDINARY_CLOUD_NAME: cloud_name, CLOUDINARY_API_KEY: api_key, CLOUDINARY_API_SECRET: api_secret } = process.env;
+        if (cloud_name && api_key && api_secret) {
+            cloudinary.config({ cloud_name, api_key, api_secret, secure: true });
+            try {
+                await cloudinary.uploader.destroy(oldPublicId, { resource_type: 'image' });
+            } catch (e) {
+                console.error('Failed to destroy Cloudinary asset:', e);
+            }
+        }
+    }
+    const updated = await User.findByIdAndUpdate(req.principal!.id, {
+        $set: { profilePicture: { url: null, publicId: null } }
+    }, { new: true });
+    res.json({ user: publicUser(updated || user), message: 'Profile picture removed' });
 }));
 router.get('/verification/status', requireAuth, (req, res) => res.json({ verificationStatus: req.principal!.verificationStatus, method: 'college_email', deliveryConfigured: deliveryReady() }));
 router.post('/verification', requireAuth, wrap(async (req, res) => {

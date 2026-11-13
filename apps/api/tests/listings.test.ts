@@ -24,7 +24,7 @@ vi.mock('../src/middleware/auth.middleware.js', () => ({
 import { createApp } from '../src/app.js';
 const app = createApp('http://localhost:3000');
 const payload = { title: 'Calculus book', description: 'Clean textbook', category: 'books', pricePaise: 25000, condition: 'good', location: 'Campus' };
-const authenticated = (method: 'get'|'post'|'patch'|'delete', path: string, id = seller) => request(app)[method](path).set('x-test-user', id).set('Origin', 'http://localhost:3000');
+const authenticated = (method: 'get' | 'post' | 'patch' | 'delete', path: string, id = seller) => request(app)[method](path).set('x-test-user', id).set('Origin', 'http://localhost:3000');
 
 beforeEach(() => { vi.clearAllMocks(); db.createListing.mockResolvedValue(record); db.listListings.mockResolvedValue({ data: [record], page: { page: 1, limit: 20, total: 1, hasMore: false } }); db.getListing.mockResolvedValue(record); db.getOwnedListing.mockResolvedValue(record); db.updateListing.mockResolvedValue({ ...record, title: 'Updated title' }); db.archiveListing.mockResolvedValue({ ...record, status: 'removed' }); });
 describe('Stage 3 listing routes', () => {
@@ -54,7 +54,7 @@ describe('Stage 3 listing routes', () => {
   it('retrieves active listings and supports trailing slash', async () => {
     expect((await authenticated('get', '/api/listings')).status).toBe(200);
     expect((await authenticated('get', '/api/listings/')).status).toBe(200);
-    expect(db.listListings).toHaveBeenCalledWith({ status: 'available' }, 1, 20);
+    expect(db.listListings).toHaveBeenCalledWith({ status: 'available' }, 1, 20, { search: undefined, category: undefined, sort: 'newest' });
   });
   it('retrieves an individual active listing and rejects invalid/missing IDs', async () => {
     expect((await authenticated('get', `/api/listings/${listingId}`)).body.data._id).toBe(listingId);
@@ -88,14 +88,42 @@ describe('Stage 3 listing routes', () => {
   });
   it('excludes archived listings via status filter and blocks archived detail', async () => {
     await authenticated('get', '/api/listings');
-    expect(db.listListings).toHaveBeenCalledWith({ status: 'available' }, 1, 20);
+    expect(db.listListings).toHaveBeenCalledWith({ status: 'available' }, 1, 20, { search: undefined, category: undefined, sort: 'newest' });
     db.getListing.mockResolvedValueOnce(null);
     expect((await authenticated('get', `/api/listings/${listingId}`)).status).toBe(404);
   });
   it('paginates and rejects invalid or unsupported query parameters', async () => {
     expect((await authenticated('get', '/api/listings?page=2&limit=5')).status).toBe(200);
-    expect(db.listListings).toHaveBeenCalledWith({ status: 'available' }, 2, 5);
+    expect(db.listListings).toHaveBeenCalledWith(
+      { status: 'available' },
+      2,
+      5,
+      {
+        search: undefined,
+        category: undefined,
+        sort: 'newest',
+      }
+    );
     expect((await authenticated('get', '/api/listings?limit=100')).status).toBe(400);
     expect((await authenticated('get', '/api/listings?q=book')).status).toBe(400);
+  });
+});
+
+describe('Stage 4 listing browse endpoints', () => {
+  it('accepts search, category and sorting', async () => {
+    const response = await authenticated('get', '/api/listings?search=calculator&category=electronics&sort=price_asc&page=2');
+    expect(response.status).toBe(200);
+    expect(db.listListings).toHaveBeenCalledWith({ status: 'available' }, 2, 20, { search: 'calculator', category: 'electronics', sort: 'price_asc' });
+  });
+  it('rejects invalid filters', async () => {
+    expect((await authenticated('get', '/api/listings?sort=invalid')).status).toBe(400);
+    expect((await authenticated('get', '/api/listings?category=invalid')).status).toBe(400);
+  });
+  it('retrieves one owned listing for editing', async () => {
+    const response = await authenticated('get', `/api/listings/my-listings/${listingId}`);
+    expect(response.status).toBe(200);
+    expect(db.getOwnedListing).toHaveBeenCalledWith(listingId, seller);
+    db.getOwnedListing.mockResolvedValueOnce(null);
+    expect((await authenticated('get', `/api/listings/my-listings/${listingId}`)).status).toBe(404);
   });
 });

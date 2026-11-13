@@ -12,7 +12,7 @@ const listingSchema = new Schema({
   condition: { type: String, required: true, enum: LISTING_CONDITIONS },
   location: { type: String, required: true, trim: true, minlength: 2, maxlength: 120 },
   status: { type: String, required: true, enum: LISTING_STATUSES, default: 'available' },
-  imageAssets: { type: [{ publicId: { type: String, required: true }, url: { type: String, required: true } }], default: [] },
+  imageAssets: { type: [{ publicId: { type: String, required: true }, url: { type: String, required: true } }], default: [], validate: { validator: (assets: unknown[]) => assets.length <= 5, message: 'Maximum five images per listing' } },
   reservedTransactionId: { type: Schema.Types.ObjectId, ref: 'Transaction' },
   removedReason: { type: String, maxlength: 500 },
 }, { timestamps: true });

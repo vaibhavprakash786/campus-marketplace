@@ -1,7 +1,8 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { requireAuth, requireVerified } from '../../middleware/auth.middleware.js';
 import { archiveListing, createListing, getListing, getOwnedListing, isListingId, listListings, updateListing } from './service.js';
-import { parsePage, validateListingInput } from './validators.js';
+import { listingImagesRouter } from './images.js';
+import { parseBrowseQuery, parsePage, validateListingInput } from './validators.js';
 
 const router = Router();
 const safe = (handler: (req: Request, res: Response) => Promise<void>) =>
@@ -12,15 +13,24 @@ const invalidId = (req: Request, res: Response) => {
 };
 
 router.use(requireAuth, requireVerified);
+router.use('/:listingId/images', listingImagesRouter);
 router.get('/', safe(async (req, res) => {
   const pagination = parsePage(req.query);
   if (pagination.error) { res.status(400).json({ error: pagination.error }); return; }
-  res.json(await listListings({ status: 'available' }, pagination.page!, pagination.limit!));
+  const browse = parseBrowseQuery(req.query);
+  if (browse.error) { res.status(400).json({ error: browse.error }); return; }
+  res.json(await listListings({ status: 'available' }, pagination.page!, pagination.limit!, browse));
 }));
 router.get('/my-listings', safe(async (req, res) => {
   const pagination = parsePage(req.query);
   if (pagination.error) { res.status(400).json({ error: pagination.error }); return; }
   res.json(await listListings({ sellerId: req.principal!.id }, pagination.page!, pagination.limit!));
+}));
+router.get('/my-listings/:listingId', safe(async (req, res) => {
+  if (invalidId(req, res)) return;
+  const listing = await getOwnedListing(req.params.listingId, req.principal!.id);
+  if (!listing) { res.status(404).json({ error: 'Listing not found' }); return; }
+  res.json({ data: listing });
 }));
 router.post('/', safe(async (req, res) => {
   const { value, error } = validateListingInput(req.body);

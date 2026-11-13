@@ -1,60 +1,16 @@
 'use client';
-
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-
-type ConnectionStatus = 'loading' | 'connected' | 'error' | 'unconfigured';
-
-export default function Home() {
-  const [status, setStatus] = useState<ConnectionStatus>('loading');
-
-  useEffect(() => {
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL;
-    if (!baseUrl) {
-      setStatus('unconfigured');
-      return;
-    }
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-    async function checkConnection() {
-      try {
-        const response = await fetch(`${baseUrl!.replace(/\/$/, '')}/api/health`, {
-          signal: controller.signal,
-          cache: 'no-store',
-        });
-        if (!response.ok) throw new Error('API unavailable');
-        const data: unknown = await response.json();
-        if (typeof data !== 'object' || data === null || !('status' in data) || data.status !== 'success') {
-          throw new Error('Unexpected health response');
-        }
-        setStatus('connected');
-      } catch {
-        setStatus('error');
-      } finally {
-        clearTimeout(timeout);
-      }
-    }
-    void checkConnection();
-    return () => { controller.abort(); clearTimeout(timeout); };
-  }, []);
-
-  const messages: Record<ConnectionStatus, string> = {
-    loading: 'Checking API connection…',
-    connected: 'API connection successful.',
-    error: 'Cannot reach the API. Check that the backend and MongoDB are running.',
-    unconfigured: 'API URL is not configured. Set NEXT_PUBLIC_API_URL.',
-  };
-
-  return (
-    <main className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-      <section className="w-full max-w-xl rounded-2xl bg-white p-10 shadow-sm border border-slate-200">
-        <p className="text-sm font-semibold uppercase tracking-widest text-indigo-600">Welcome</p>
-        <h1 className="mt-3 text-4xl font-bold tracking-tight text-slate-900">College Marketplace</h1>
-        <p className="mt-4 text-lg text-slate-600">A college-exclusive space to give second-hand essentials a new home.</p>
-        <p className="mt-6 text-slate-700">Your campus marketplace is being prepared.</p>
-        <p className="mt-8 text-sm text-slate-600" role="status" aria-live="polite">{messages[status]}</p>
-        <nav className="mt-5 flex gap-4 text-sm text-indigo-600"><Link href="/register">Register</Link><Link href="/login">Log in</Link><Link href="/profile">Profile</Link></nav>
-      </section>
-    </main>
-  );
+import { api, CATEGORIES, pretty, type ListingPage } from '../lib/api';
+import { ListingCard } from '../components/listing-card';
+import { Protected } from '../components/protected';
+export default function Home() { return <Protected><Marketplace /></Protected>; }
+function Marketplace() {
+ const [search, setSearch] = useState(''); const [query, setQuery] = useState(''); const [category, setCategory] = useState(''); const [sort, setSort] = useState('newest'); const [page, setPage] = useState(1);
+ const [result, setResult] = useState<ListingPage|null>(null); const [loading, setLoading] = useState(true); const [error, setError] = useState('');
+ useEffect(() => { const controller = new AbortController(); const timer = setTimeout(() => {
+  setLoading(true); setError(''); const params = new URLSearchParams({ page: String(page), limit: '12', sort }); if (query) params.set('search', query); if (category) params.set('category', category);
+  void api<ListingPage>(`/listings?${params}`, { signal: controller.signal }).then(setResult).catch(e => { if (!controller.signal.aborted) setError(e instanceof Error ? e.message : 'Unable to load listings'); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+ }, 200); return () => { clearTimeout(timer); controller.abort(); }; }, [query, category, sort, page]);
+ return <main><section className="hero-panel"><div className="page-wrap py-7 md:py-10"><span className="hero-eyebrow">✦ &nbsp; The student-only marketplace</span><h1 className="hero-title">Your campus.<br/><span>Better finds.</span><br/>Smarter deals.</h1><p className="hero-subtitle">From textbooks to tech, find your next favorite thing from students you can trust. Buy better, sell faster, keep it on campus.</p><div className="hero-actions"><Link href="#discover" className="hero-primary">Explore marketplace ↗</Link><Link href="/sell" className="hero-secondary">＋ List an item</Link></div><div className="hero-trust"><span>✓ Verified college community</span><span>✓ Easy student-to-student chat</span><span>✓ Great pre-loved finds</span></div></div></section><div id="discover" className="page-wrap"><div className="flex flex-col lg:flex-row lg:items-end gap-4 justify-between"><div><p className="section-eyebrow">Explore the marketplace</p><h2 className="section-title mt-2">Discover campus deals</h2></div><form className="market-search lg:max-w-lg" onSubmit={e => { e.preventDefault(); setPage(1); setQuery(search.trim()); }}><label className="sr-only" htmlFor="search">Search products</label><input id="search" className="" placeholder="Search books, laptops, furniture…" value={search} onChange={e => setSearch(e.target.value)} /><button className="action" type="submit">Search</button></form></div><div className="market-filters mt-7 flex flex-wrap gap-3 items-center"><label className="sr-only" htmlFor="category">Category</label><select id="category" className="field max-w-48" value={category} onChange={e => { setCategory(e.target.value); setPage(1); }}><option value="">All categories</option>{CATEGORIES.map(c => <option key={c} value={c}>{pretty(c)}</option>)}</select><label className="sr-only" htmlFor="sort">Sort listings</label><select id="sort" className="field max-w-48" value={sort} onChange={e => { setSort(e.target.value); setPage(1); }}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="price_asc">Price: low to high</option><option value="price_desc">Price: high to low</option></select>{query && <button className="text-indigo-700 underline text-sm" onClick={() => { setQuery(''); setSearch(''); setPage(1); }}>Clear search</button>}</div>{loading ? <p role="status" className="mt-10">Loading listings…</p> : error ? <div className="mt-10" role="alert"><p className="text-red-700">{error}</p><button className="mt-2 underline" onClick={() => setPage(p => p)}>Try again by refreshing the page</button></div> : result && <><p className="mt-6 text-sm text-slate-500">{result.page.total} listing{result.page.total === 1 ? '' : 's'} found</p>{result.data.length ? <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mt-6">{result.data.map(item => <ListingCard key={item._id} listing={item} />)}</div> : <div className="rounded-2xl border border-dashed border-slate-300 bg-white text-center py-16 mt-5"><p className="text-4xl">📦</p><h3 className="text-xl font-bold mt-3">No listings found</h3><p className="text-slate-500 mt-2">Try another search or category, or be the first to sell.</p></div>}<div className="flex items-center justify-center gap-5 mt-10"><button className="border rounded-lg px-4 py-2 disabled:opacity-40" disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p-1))}>Previous</button><span>Page {page} of {Math.max(1, Math.ceil(result.page.total / result.page.limit))}</span><button className="border rounded-lg px-4 py-2 disabled:opacity-40" disabled={!result.page.hasMore} onClick={() => setPage(p => p+1)}>Next</button></div></>}</div></main>;
 }

@@ -6,8 +6,8 @@ Conventions: `_id: ObjectId`, `createdAt/updatedAt: Date`, references ObjectId, 
 |---|---|---|---|---|
 | users | email:String normalized unique, passwordHash:String, name:String, department:String, graduationYear:Number, role:`student/admin`, verificationStatus:`unverified/pending/verified/rejected`, status:`active/suspended`, timestamps | verificationMethod:String, verificationEvidenceRef:String private, verifiedAt:Date | unique email; verificationStatus | self/admin profile; evidence only verification admin |
 | listings | sellerId:ObjectId(users), title:String, description:String, category:String, condition:`new/like_new/good/fair/poor`, pricePaise:Number, imageAssets:Array of bounded `{publicId,url}`, status:`available/reserved/sold/removed`, timestamps | reservedTransactionId:ObjectId, removedReason:String | status+createdAt; sellerId+createdAt; category+status+pricePaise; text(title,description) | verified read; seller/admin write |
-| conversations | listingId:ObjectId, buyerId:ObjectId, sellerId:ObjectId, timestamps | lastMessageAt:Date | unique(listingId,buyerId,sellerId); buyerId+updatedAt; sellerId+updatedAt | participants only |
-| messages | conversationId:ObjectId, senderId:ObjectId, body:String, createdAt:Date | readAt:Date | conversationId+createdAt+_id | participants only; sender must participate |
+| conversations | listingId:ObjectId, buyerId:ObjectId, sellerId:ObjectId, timestamps | lastMessageAt:Date | unique(buyerId,listingId); buyerId+lastMessageAt+_id; sellerId+lastMessageAt+_id | participants only |
+| messages | conversationId:ObjectId, senderId:ObjectId, text:String, createdAt:Date, updatedAt:Date | none | conversationId+createdAt+_id | participants only; sender must participate |
 | offers | conversationId:ObjectId, listingId:ObjectId, buyerId:ObjectId, sellerId:ObjectId, proposedBy:ObjectId, amountPaise:Number, status:`pending/accepted/rejected/countered/withdrawn/expired`, createdAt:Date | parentOfferId:ObjectId, respondedAt:Date | conversationId+createdAt; listingId+status | participants; seller accepts buyer offer, buyer accepts seller counter |
 | transactions | listingId:ObjectId, buyerId:ObjectId, sellerId:ObjectId, acceptedOfferId:ObjectId, agreedPricePaise:Number, status:`reserved/cancelled/expired/completed/disputed`, expiresAt:Date, buyerConfirmedAt:Date|null, sellerConfirmedAt:Date|null, timestamps | cancelledBy:ObjectId, cancellationReason:String | listingId+status; buyerId+createdAt; sellerId+createdAt; unique partial(listingId) where status=reserved | parties only; admin dispute handling |
 | reports | reporterId:ObjectId, targetType:`listing/user`, targetId:ObjectId, reason:String, status:`open/reviewing/resolved/dismissed`, createdAt:Date | details:String, reviewedBy:ObjectId, reviewedAt:Date, resolution:String | status+createdAt; reporterId+createdAt; targetType+targetId | reporter creates/reads own; admin reviews |
@@ -23,7 +23,7 @@ Conventions: `_id: ObjectId`, `createdAt/updatedAt: Date`, references ObjectId, 
 - Normalize email; constrain text lengths and graduation year to sensible configured bounds; no plaintext passwords; role defaults student and cannot be self-promoted.
 - Image count and file limits configurable; validate Cloudinary public IDs as owned assets, do not trust submitted URLs.
 - Conversation participants distinct, seller must equal listing seller, buyer cannot be seller; unique compound index prevents duplicate creation races.
-- Messages max length, nonempty trimmed, no unbounded embedded message arrays; use cursor pagination on `(createdAt,_id)`.
+- Messages max length, nonempty trimmed, no unbounded embedded message arrays; Stage 6 uses cursor pagination on `(createdAt,_id)`.
 - Offers amount positive safe integer, parent offer must be in same conversation, new counter creates a new offer and changes predecessor `pending -> countered`; never overwrite history.
 - One actionable pending offer per conversation (service rule; optionally partial unique index `conversationId,status=pending`); responding must match expected pending status and authorized recipient.
 - Only one reserved transaction per listing (partial unique index). Listing `reservedTransactionId` points to winning transaction. Status invariants: available has null reservation; reserved points to reserved transaction; sold points to completed transaction (retain reference); removed cannot be reserved.
@@ -48,3 +48,20 @@ The implemented `users` schema includes email, passwordHash (select:false), name
 `Listing` is defined in `apps/api/src/modules/listings/model.ts`. Required: `sellerId` (immutable users ObjectId), trimmed `title` (3–120), `description` (5–5000), `category` (1–60), `condition` (`new/like_new/good/fair/poor`), `pricePaise` (positive safe integer), `location` (2–120), and `status` (`available/reserved/sold/removed`, initially `available`). `imageAssets` defaults to an empty array and cannot be supplied/modified through Stage 3 endpoints. Optional future-stage fields `reservedTransactionId` and `removedReason` are stored but not client-writable. Timestamps use Mongoose `timestamps: true`.
 
 Indexes implemented: `(status, createdAt desc, _id desc)` for available marketplace pagination and `(sellerId, createdAt desc, _id desc)` for owner pagination. Only available listings appear in general browse/detail; owner list includes archived listings. Deletion atomically transitions `available -> removed`, preserving history. Editing is limited to `available` listings, with atomic status/owner predicates. Category remains a bounded free-form label because Stage 0 left the allowed-category taxonomy configurable and unapproved; no category enum is invented. Stage 3 uses bounded offset pagination (`page` 1–10000, `limit` 1–50); future-stage search/cursor pagination is not implemented.
+
+## Stage 5 image metadata
+The existing `Listing.imageAssets` array is retained (no migration required). Each entry is a Mongoose subdocument with `_id`, `publicId` (Cloudinary identifier), and `url` (Cloudinary HTTPS delivery URL). The first entry is primary. The schema enforces a maximum of five images; existing empty arrays remain valid. Binary image data is never stored in MongoDB.
+
+
+## Stage 6 implemented models
+`Conversation`: immutable buyerId, sellerId and listingId; lastMessage (max 2000),
+lastMessageAt, lastMessageId, createdAt, updatedAt. Distinct participants are validated.
+Unique `(buyerId, listingId)` prevents concurrent duplicate starts. API startup awaits
+creation of conversation/message indexes; index creation failure prevents serving.
+
+`Message`: immutable conversationId and senderId, trimmed required text (1–2000),
+createdAt and updatedAt. Index `(conversationId, createdAt descending, _id descending)` supports history.
+Relations and authorization are checked by the service; MongoDB has no foreign keys.
+Summary fields are a cache; message records are authoritative for inbox previews/order.
+No migration of existing listing/user fields and no destructive index synchronization.
+See `messaging.md` for response contracts, consistency and availability rules.

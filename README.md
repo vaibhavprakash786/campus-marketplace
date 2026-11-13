@@ -65,3 +65,36 @@ For real delivery use `EMAIL_DELIVERY_MODE=resend`, `RESEND_API_KEY` and a verif
 The Express API now provides verified-session-only listing routes: `POST /api/listings`, `GET /api/listings`, `GET /api/listings/` (same handler), `GET /api/listings/my-listings`, `GET /api/listings/:listingId`, `PATCH /api/listings/:listingId`, and `DELETE /api/listings/:listingId`. Auth uses the existing `campus_session` cookie and origin check; mutations require `Origin: http://localhost:3000` in local development. Request fields: `title`, `description`, `category`, `condition`, `pricePaise` (integer paise), `location`; patch accepts a nonempty subset. Server assigns `sellerId`, `status=available`, `imageAssets=[]`. No image references may be submitted until Stage 5.
 
 `GET /api/listings?page=1&limit=20` returns only available listings; `GET /api/listings/my-listings` includes the seller's archived listings. Both return `{ "data": [...], "page": { "page": 1, "limit": 20, "total": 0, "hasMore": false } }`; maximum limit is 50. Single-listing reads and writes return `{ "data": { ... } }`; successful archive returns HTTP 204. Invalid input returns 400, missing/other-owned listings 404, and conflicting status changes 409. Listing reads require a verified active session; suspended/unverified accounts cannot use listing routes. Categories are currently free-form bounded strings (taxonomy not approved). No marketplace frontend or upload implementation is included.
+
+
+## Stage 4 marketplace frontend
+Start MongoDB, then run `npm run dev:api` and `npm run dev:web` in separate terminals. Visit `http://localhost:3000`, log in with a verified active account, and browse the marketplace. Use `/sell` to create a listing, `/my-listings` to edit or archive it, and `/marketplace/<id>` to see details. The browser uses `NEXT_PUBLIC_API_URL` for cookie-authenticated requests. Search, category, sorting and pagination use real backend queries.
+
+**Local verification:** `npm ci`, `npm run typecheck`, `npm run test`, `npm run lint`, `npm run build`. Tests and builds must be executed locally before calling Stage 4 complete. Do not upload `.env` files or `node_modules`.
+
+## Stage 5: Product photos (Cloudinary)
+Install dependencies from the project root using `npm install` (this also updates `package-lock.json`). Configure the following **in the backend environment only** (`apps/api/.env` if that is where your existing API loads environment variables):
+
+```dotenv
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
+```
+
+Do not use `NEXT_PUBLIC_` prefixes for Cloudinary secrets. The API must have access to these variables in the process environment. Uploads are server-side using `multipart/form-data` with field name `images`, maximum 5 files per request, maximum 5 images per listing, and maximum 5 MB per image. Supported content signatures: JPEG, PNG, WebP. Existing empty image arrays remain valid. Images are stored in `college-marketplace/listings/<listing-id>` on Cloudinary. `imageAssets[0]` is primary.
+
+API endpoints (require verified student session and ownership):
+- `POST /api/listings/:listingId/images` (multipart field `images`)
+- `DELETE /api/listings/:listingId/images/:imageId`
+- `PATCH /api/listings/:listingId/images/:imageId/primary`
+
+After installing dependencies, run `npm run typecheck`, `npm run test`, `npm run lint`, `npm run build`, then test with both `npm run dev:api` and `npm run dev:web` in separate terminals. Do not commit `.env` files. Existing listings remain supported.
+
+**Consistency limits:** failed multi-file uploads attempt to delete earlier Cloudinary assets; failed cleanup is logged and requires operator retry. A Cloudinary deletion failure after metadata removal requires operator cleanup. Browser interruption after Cloudinary receives a file but before metadata persistence can leave an orphan. The application has no background reconciliation job yet. Concurrent image reordering and deletion should be exercised under load before production deployment.
+
+## Stage 6 — buyer/seller messaging
+Verified members can use **Contact seller**, **Messages**, and individual chat pages.
+See [messaging documentation](docs/messaging.md) for API contracts, persistence,
+availability rules and test commands. See [Stage 6 report](docs/stage-6-test-report.md)
+for actual verification results and remaining blockers. No sockets or Stage 7 features
+are included. No new application environment variables are required.

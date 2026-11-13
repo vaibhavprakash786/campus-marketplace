@@ -34,10 +34,20 @@ export function validateListingInput(body: unknown, partial = false): { value?: 
 }
 
 export function parsePage(query: Record<string, unknown>): { page?: number; limit?: number; error?: string } {
-  if (Object.keys(query).some(key => !['page', 'limit'].includes(key))) return { error: 'Unsupported query parameter' };
+  if (Object.keys(query).some(key => !['page', 'limit', 'search', 'category', 'sort'].includes(key))) return { error: 'Unsupported query parameter' };
   const parse = (raw: unknown, fallback: number) => raw === undefined ? fallback :
     (typeof raw === 'string' && /^[1-9]\d*$/.test(raw) ? Number(raw) : NaN);
   const page = parse(query.page, 1), limit = parse(query.limit, 20);
   if (!Number.isSafeInteger(page) || page > 10000 || !Number.isSafeInteger(limit) || limit > 50) return { error: 'Invalid pagination (page 1-10000, limit 1-50)' };
   return { page, limit };
+}
+
+export const LISTING_CATEGORIES = ['electronics', 'furniture', 'books', 'stationery', 'appliances', 'others'] as const;
+export const LISTING_SORTS = ['newest', 'oldest', 'price_asc', 'price_desc'] as const;
+export function parseBrowseQuery(query: Record<string, unknown>): { search?: string; category?: string; sort?: typeof LISTING_SORTS[number]; error?: string } {
+  const { search, category, sort } = query;
+  if (search !== undefined && (typeof search !== 'string' || search.length > 100)) return { error: 'Invalid search (max 100 characters)' };
+  if (category !== undefined && (typeof category !== 'string' || !LISTING_CATEGORIES.includes(category as typeof LISTING_CATEGORIES[number]))) return { error: 'Invalid category' };
+  if (sort !== undefined && (typeof sort !== 'string' || !LISTING_SORTS.includes(sort as typeof LISTING_SORTS[number]))) return { error: 'Invalid sort' };
+  return { search: typeof search === 'string' ? search.trim() : undefined, category: category as string | undefined, sort: (sort ?? 'newest') as typeof LISTING_SORTS[number] };
 }

@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
-  title: College Marketplace API (Stage 3 listings backend; future routes proposed)
+  title: College Marketplace API (through Stage 6; later routes proposed)
   version: 0.1.0
-  description: All monetary amounts are integer INR paise. Persist via REST, then notify via Socket.IO.
+  description: All monetary amounts are integer INR paise. Stage 6 messaging uses REST only. Offers, sockets and later routes remain proposals.
 servers:
   - url: /api
 security:
@@ -185,41 +185,57 @@ paths:
   /conversations:
     get:
       tags: [Conversations]
-      summary: List own conversations, paginated
+      summary: List verified participant conversations by latest activity
       parameters:
-        - { $ref: '#/components/parameters/Cursor' }
-        - { $ref: '#/components/parameters/Limit' }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, maximum: 100000, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
       responses:
-        '200': { $ref: '#/components/responses/Page' }
+        '200':
+          description: '{data: ConversationSummary[], page: {page, limit, hasMore}}; see docs/messaging.md'
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
     post:
       tags: [Conversations]
-      summary: Buyer starts or retrieves unique conversation about listing
+      summary: Start or retrieve a conversation for an available listing
       requestBody:
         $ref: '#/components/requestBodies/Conversation'
       responses:
-        '200': { $ref: '#/components/responses/Item' }
-        '201': { $ref: '#/components/responses/Item' }
+        '200': { description: 'Existing conversation: {data: {_id}}' }
+        '201': { description: 'Created conversation: {data: {_id}}' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
   /conversations/{conversationId}/messages:
     parameters:
       - { $ref: '#/components/parameters/ConversationId' }
     get:
       tags: [Conversations]
-      summary: Paginate messages (participants only)
+      summary: Latest messages in chronological order; participants only
       parameters:
-        - { $ref: '#/components/parameters/Cursor' }
-        - { $ref: '#/components/parameters/Limit' }
+        - { name: before, in: query, schema: { $ref: '#/components/schemas/Id' } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 30 } }
       responses:
-        '200': { $ref: '#/components/responses/Page' }
+        '200':
+          description: '{data: Message[], conversation: ConversationSummary, page: {hasMore, nextBefore}}; see docs/messaging.md'
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
     post:
       tags: [Conversations]
-      summary: Persist message then emit message.created
+      summary: Persist participant text message and update conversation summary
       requestBody:
         $ref: '#/components/requestBodies/Message'
       responses:
-        '201': { $ref: '#/components/responses/Item' }
+        '201': { description: 'Saved message: {data: Message}' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
   /conversations/{conversationId}/offers:
     parameters:
       - { $ref: '#/components/parameters/ConversationId' }
@@ -568,6 +584,7 @@ components:
           schema:
             type: object
             required: [listingId]
+            additionalProperties: false
             properties:
               listingId: { $ref: '#/components/schemas/Id' }
     Message:
@@ -576,9 +593,10 @@ components:
         application/json:
           schema:
             type: object
-            required: [body]
+            required: [text]
+            additionalProperties: false
             properties:
-              body: { type: string, minLength: 1, maxLength: 2000 }
+              text: { type: string, minLength: 1, maxLength: 2000 }
     Offer:
       required: true
       content:
@@ -670,3 +688,16 @@ x-socket-io:
 # Stage 2 implementation note: verification submission and email confirmation return 503
 # while no institution-approved verification method is selected. SSO and admin
 # verification routes are planned only, not implemented. Stage 3+ routes remain planned.
+
+# Stage 4 browse query extensions (implemented):
+# GET /api/listings?page=1&limit=20&search=calculator&category=electronics&sort=price_asc
+# search: optional, case-insensitive literal substring of title or description, max 100 characters
+# category: electronics | furniture | books | stationery | appliances | others
+# sort: newest (default) | oldest | price_asc | price_desc
+# GET /api/listings/my-listings/{listingId}: owner-scoped detail for edit form
+
+# Stage 5 image endpoints (implementation detail)
+# POST /api/listings/{listingId}/images: multipart/form-data field images (1-5 files)
+# DELETE /api/listings/{listingId}/images/{imageId}: removes one owned image
+# PATCH /api/listings/{listingId}/images/{imageId}/primary: moves owned image to first position
+# Each route requires a verified active student session and listing ownership.
